@@ -1,1 +1,148 @@
+import cv2
+import numpy as np
+import plotly.graph_objects as go
+from PIL import Image
+
+def process_image(image_path):
+    try:
+        # Read the original image
+        original_image = cv2.imread(image_path)
+
+        # Apply Gaussian blur to the original image
+        blurred_image = cv2.GaussianBlur(original_image, (5, 5), 0)
+
+        # Convert the blurred image to grayscaale
+        gray_image = cv2.cvtColor(blurred_image, cv2.COLOR_BGR2GRAY)
+
+        # Adaptive thresholding to segment the biliary tree
+        _, binary_image = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        # Find contours in the binary image
+        contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Filter contours based on area (adjust the threshold as needed)
+        area_threshold = 500
+        filtered_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > area_threshold]
+
+        # Flatten the filtered contours
+        overall_contour = np.concatenate(filtered_contours)
+
+        return original_image, overall_contour, filtered_contours
+
+    except Exception as e:
+        print(f"Error processing image: {e}")
+        return None, None, None
+
+def measure_fractal_dimension(contour):
+    # Calculate the perimeter using arc length
+    perimeter = cv2.arcLength(contour, closed=True)
+
+    # Calculate fractal dimension for the overall contour
+    fractal_dimension = (perimeter ** 2) / (4 * np.pi * cv2.contourArea(contour))
+
+    return fractal_dimension
+
+def main():
+    try:
+        image_path = r"C:\Users\prath\Downloads\Coding Projects\fractals ducts\1-s2.0-S2589555922001495-gr1.jpg"
+        
+        # Process the image and extract the original image, overall contour, and filtered contours
+        original_image, overall_contour, filtered_contours = process_image(image_path)
+
+        # Measure fractal dimension for the overall contour
+        fractal_dimension = measure_fractal_dimension(overall_contour)
+
+        # Convert contour coordinates to Plotly format
+        x_contour = overall_contour[:, 0, 0]
+        y_contour = original_image.shape[0] - overall_contour[:, 0, 1]  # Flip y-coordinates to match Plotly's coordinate system
+
+        # Apply the Ramer-Douglas-Peucker algorithm to simplify the contour
+        epsilon = 5  # Adjust the epsilon value as needed
+        simplified_x_contour, simplified_y_contour = rdp_simplify(x_contour, y_contour, epsilon)
+
+        # Create a scatter plot for the unsimplified and simplified contours
+        fig = go.FigureWidget()
+
+        # Add the unsimplified contour points as scatter plot
+        fig.add_trace(go.Scatter(x=x_contour, y=y_contour, mode='markers', name='Unsimplified Contour'))
+
+        # Add the simplified contour points as scatter plot
+        fig.add_trace(go.Scatter(x=simplified_x_contour, y=simplified_y_contour, mode='markers', name='Simplified Contour'))
+
+        # Get image dimensions
+        img_height, img_width, _ = original_image.shape
+
+        # Set plot dimensions to match image aspect ratio
+        fig.update_layout(
+            width=img_width * 4,  # Adjust multiplier for desired size
+            height=img_height * 4,  # Adjust multiplier for desired size
+            xaxis=dict(range=[0, img_width]),
+            yaxis=dict(range=[0, img_height]),
+            title=f"Simplified and Unsimplified Fractal Contour (Fractal Dimension: {fractal_dimension:.4f})",
+            showlegend=True
+        )
+
+        # Convert the original image array to a PIL image object
+        original_image_pil = Image.fromarray(original_image)
+
+        # Show the original image as background
+        fig.add_layout_image(
+            dict(
+                source=original_image_pil,
+                xref="x",
+                yref="y",
+                x=0,
+                y=img_height,
+                sizex=img_width,
+                sizey=img_height,
+                sizing="stretch",
+                opacity=1,
+                layer="below"
+            )
+        )
+
+        # Iterate over each cell from the plot's layout
+        for shape in fig.layout.shapes:
+            if shape.type == 'rect':
+                print(f"Cell boundaries: x0={x0}, y0={y0}, x1={x1}, y1={y1}")
+                x0, y0, x1, y1 = shape.x0, shape.y0, shape.x1, shape.y1
+                
+                # Filter contour points within the cell boundaries
+                simplified_in_cell = sum(1 for x, y in zip(simplified_x_contour, simplified_y_contour)
+                                          if x0 <= x < x1 and y0 <= y < y1)
+
+                # Count unsimplified points within the cell by subtracting simplified points from total points
+                unsimplified_in_cell = sum(1 for x, y in zip(x_contour, y_contour)
+                                            if x0 <= x < x1 and y0 <= y < y1) - simplified_in_cell
+
+                # Shade the cell if the ratio exceeds the threshold
+                total_points_in_cell = simplified_in_cell + unsimplified_in_cell
+                ratio = simplified_in_cell / total_points_in_cell if total_points_in_cell != 0 else 0
+                if ratio > 1 / 1000000:
+                    shape.fillcolor = "red"
+                    shape.opacity = 0.5
+                    shape.layer = "above" 
+
+        fig.show()
+
+    except Exception as e:
+        print(f"Error in main function: {e}")
+
+
+
+
+def rdp_simplify(x_points, y_points, epsilon):
+    """
+    Apply the Ramer-Douglas-Peucker algorithm to simplify a polygonal path.
+    """
+    if len(x_points) < 2 or len(y_points) < 2:
+        raise ValueError("Not enough points to simplify")
+
+    points = np.column_stack((x_points, y_points))
+    simplified_points = cv2.approxPolyDP(points, epsilon, closed=True)
+
+    return simplified_points[:, 0, 0], simplified_points[:, 0, 1]
+
+if __name__ == "__main__":
+    main()
 
