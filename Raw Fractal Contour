@@ -1,1 +1,87 @@
+import cv2
+import numpy as np
+import plotly.graph_objects as go
+
+def process_image(image_path):
+    try:
+        # Read the image
+        image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+
+        # Adaptive thresholding to segment the biliary tree
+        _, binary_image = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        # Find contours in the binary image
+        contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Filter contours based on area (adjust the threshold as needed)
+        area_threshold = 500
+        filtered_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > area_threshold]
+
+        # Flatten the filtered contours
+        overall_contour = np.concatenate(filtered_contours)
+
+        return overall_contour, filtered_contours
+
+    except Exception as e:
+        print(f"Error processing image: {e}")
+        return None, None
+
+
+def measure_fractal_dimension(contour):
+    # Calculate the perimeter using arc length
+    perimeter = cv2.arcLength(contour, closed=True)
+
+    # Calculate fractal dimension for the overall contour
+    fractal_dimension = (perimeter ** 2) / (4 * np.pi * cv2.contourArea(contour))
+
+    return fractal_dimension
+
+def main():
+    try:
+        image_path = r"C:\Users\prath\Downloads\Coding Projects\fractals ducts\MRCP Dilated Billary Tree.jpg"
+        
+        # Process the image and extract the overall contour
+        overall_contour, filtered_contours = process_image(image_path)
+
+        # Measure fractal dimension for the overall contour
+        fractal_dimension = measure_fractal_dimension(overall_contour)
+
+        # Print the fractal dimension
+        print(f"Fractal Dimension: {fractal_dimension:.4f}")
+
+        # Read the original image
+        original_image = cv2.imread(image_path)
+
+        # Convert contour coordinates to Plotly format
+        x_contour = overall_contour[:, 0, 0]
+        y_contour = overall_contour[:, 0, 1]
+
+        # Create a contour trace
+        trace_contour = go.Scatter(
+            x=x_contour,
+            y=y_contour,
+            mode='lines',
+            line=dict(color='black', width=4),
+            fill='toself',
+            opacity=0.3
+        )
+
+        # Define the layout
+        layout = go.Layout(
+            title=f"Raw Fractal Contour (Fractal Dimension: {fractal_dimension:.4f})",            
+            xaxis=dict(range=[0, original_image.shape[1]]),
+            yaxis=dict(range=[0, original_image.shape[0]])
+        )
+
+        # Define the figure
+        fig = go.Figure(data=[trace_contour], layout=layout)
+
+        # Show the figure
+        fig.show()
+
+    except Exception as e:
+        print(f"Error in main function: {e}")
+
+if __name__ == "__main__":
+    main()
 
